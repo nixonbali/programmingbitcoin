@@ -162,28 +162,55 @@ class Tx:
         signed for index input_index'''
         # start the serialization with version
         # use int_to_little_endian in 4 bytes
+        result = int_to_little_endian(self.version, 4)
         # add how many inputs there are using encode_varint
+        result += encode_varint(len(self.tx_ins))
         # loop through each input using enumerate, so we have the input index
+        for (i, tx_in) in enumerate(self.tx_ins):
             # if the input index is the one we're signing
             # the previous tx's ScriptPubkey is the ScriptSig
+
+            # create new tx as copy as not to alter original tx
+            new_tx = TxIn(tx_in.prev_tx, tx_in.prev_index, sequence=tx_in.sequence)
+
+            if i == input_index:
+                new_tx.script_sig = tx_in.script_pubkey()
             # Otherwise, the ScriptSig is empty
+            else:
+                new_tx.script_sig = Script()
             # add the serialization of the input with the ScriptSig we want
+            result += new_tx.serialize()
         # add how many outputs there are using encode_varint
+        result += encode_varint(len(self.tx_outs))
         # add the serialization of each output
+        for tx_out in self.tx_outs:
+            result += tx_out.serialize()
         # add the locktime using int_to_little_endian in 4 bytes
+        result += int_to_little_endian(self.locktime, 4)
         # add SIGHASH_ALL using int_to_little_endian in 4 bytes
+        result += int_to_little_endian(SIGHASH_ALL, 4)
         # hash256 the serialization
+        result = hash256(result)
         # convert the result to an integer using int.from_bytes(x, 'big')
-        raise NotImplementedError
+        return int.from_bytes(result, 'big')
 
     def verify_input(self, input_index):
         '''Returns whether the input has a valid signature'''
         # get the relevant input
+        tx_in = self.tx_ins[input_index]
         # grab the previous ScriptPubKey
-        # get the signature hash (z)
+        prev_script_pubkey = tx_in.script_pubkey(testnet=self.testnet)
         # combine the current ScriptSig and the previous ScriptPubKey
+        script = tx_in.script_sig + prev_script_pubkey
+
+        # note: calling sig_hash prior to accessing tx_in.script.sig
+        # updates tx_script_sig s.t.:
+        # tx_in.script_sig == tx_in.script_pubkey()
+
+        # get the signature hash (z)
+        sighash = self.sig_hash(input_index)
         # evaluate the combined script
-        raise NotImplementedError
+        return script.evaluate(sighash)
 
     # tag::source2[]
     def verify(self):
@@ -198,13 +225,19 @@ class Tx:
 
     def sign_input(self, input_index, private_key):
         # get the signature hash (z)
+        z = self.sig_hash(input_index)
         # get der signature of z from private key
+        der = private_key.sign(z).der()
         # append the SIGHASH_ALL to der (use SIGHASH_ALL.to_bytes(1, 'big'))
+        sig = der + SIGHASH_ALL.to_bytes(1, 'big')
         # calculate the sec
+        sec = private_key.point.sec()
         # initialize a new script with [sig, sec] as the cmds
+        script = Script([sig, sec])
         # change input's script_sig to new script
+        self.tx_ins[input_index].script_sig = script
         # return whether sig is valid using self.verify_input
-        raise NotImplementedError
+        return self.verify_input(input_index)
 
 
 class TxIn:
@@ -402,5 +435,7 @@ class TxTest(TestCase):
         stream = BytesIO(bytes.fromhex('010000000199a24308080ab26e6fb65c4eccfadf76749bb5bfa8cb08f291320b3c21e56f0d0d00000000ffffffff02408af701000000001976a914d52ad7ca9b3d096a38e752c2018e6fbc40cdf26f88ac80969800000000001976a914507b27411ccf7f16f10297de6cef3f291623eddf88ac00000000'))
         tx_obj = Tx.parse(stream, testnet=True)
         self.assertTrue(tx_obj.sign_input(0, private_key))
+        #print("\n\n check 1 : {}".format(tx_obj.serialize().hex() == '010000000199a24308080ab26e6fb65c4eccfadf76749bb5bfa8cb08f291320b3c21e56f0d0d00000000ffffffff02408af701000000001976a914d52ad7ca9b3d096a38e752c2018e6fbc40cdf26f88ac80969800000000001976a914507b27411ccf7f16f10297de6cef3f291623eddf88ac00000000'))
         want = '010000000199a24308080ab26e6fb65c4eccfadf76749bb5bfa8cb08f291320b3c21e56f0d0d0000006b4830450221008ed46aa2cf12d6d81065bfabe903670165b538f65ee9a3385e6327d80c66d3b502203124f804410527497329ec4715e18558082d489b218677bd029e7fa306a72236012103935581e52c354cd2f484fe8ed83af7a3097005b2f9c60bff71d35bd795f54b67ffffffff02408af701000000001976a914d52ad7ca9b3d096a38e752c2018e6fbc40cdf26f88ac80969800000000001976a914507b27411ccf7f16f10297de6cef3f291623eddf88ac00000000'
+        #print(len(want))
         self.assertEqual(tx_obj.serialize().hex(), want)

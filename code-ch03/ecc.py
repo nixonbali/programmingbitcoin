@@ -288,12 +288,26 @@ class ECCTest(TestCase):
             (47, 71, 117, 141, 60, 139),
             (143, 98, 76, 66, 47, 71),
         )
+        def fe223(x):
+            return FieldElement(x, prime)
+        
+        def point223(x,y):
+            fx = fe223(x)
+            fy = fe223(y)
+            return Point(fx,fy,a,b)
 
+        def add223(x1,y1,x2,y2):
+            p1 = point223(x1, y1)
+            p2 = point223(x2, y2)
+            return p1+p2
+
+        for x1,y1,x2,y2,x3,y3 in additions:
+            self.assertEqual(add223(x1,y1,x2,y2), point223(x3,y3))
         # loop over additions
         # initialize x's and y's as FieldElements
         # create p1, p2 and p3 as Points
         # check p1+p2==p3
-        raise NotImplementedError
+        #raise NotImplementedError
 
     def test_rmul(self):
         # tests the following scalar multiplications

@@ -23,14 +23,18 @@ class FieldElement:
 
     def __ne__(self, other):
         # this should be the inverse of the == operator
-        raise NotImplementedError
+        if other is None: 
+            return True
+        return self.num != other.num or self.prime != other.prime
 
     # tag::source2[]
     def __add__(self, other):
         if self.prime != other.prime:  # <1>
             raise TypeError('Cannot add two numbers in different Fields')
         num = (self.num + other.num) % self.prime  # <2>
-        return self.__class__(num, self.prime)  # <3>
+        return self.__class__(num, self.prime)  # <3> 
+    # note: using self.__class__ rather than FieldElement makes the method more flexible for inheritance
+    # (which we will be using later on)
     # end::source2[]
 
     def __sub__(self, other):
@@ -38,16 +42,18 @@ class FieldElement:
             raise TypeError('Cannot subtract two numbers in different Fields')
         # self.num and other.num are the actual values
         # self.prime is what we need to mod against
+        num = (self.num - other.num) % self.prime
         # We return an element of the same class
-        raise NotImplementedError
+        return self.__class__(num, self.prime)
 
     def __mul__(self, other):
         if self.prime != other.prime:
             raise TypeError('Cannot multiply two numbers in different Fields')
         # self.num and other.num are the actual values
         # self.prime is what we need to mod against
+        num = (self.num * other.num) % self.prime
         # We return an element of the same class
-        raise NotImplementedError
+        return self.__class__(num, self.prime)
 
     # tag::source3[]
     def __pow__(self, exponent):
@@ -63,9 +69,9 @@ class FieldElement:
         # self.num**(p-1) % p == 1
         # this means:
         # 1/n == pow(n, p-2, p)
+        inv_other = pow(other, other.prime-2) # self.__pow__ invoked
         # We return an element of the same class
-        raise NotImplementedError
-
+        return self * inv_other # self.__mult__ invoked 
 
 class FieldElementTest(TestCase):
 
