@@ -49,25 +49,37 @@ class NetworkEnvelope:
         else:
             expected_magic = NETWORK_MAGIC
         if magic != expected_magic:
-            raise RuntimeError('magic is not right {} vs {}'.format(magic.hex(), expected_magic.hex()))
+            raise RuntimeError('magic is not right. Got {}. Expected {}'.format(magic.hex(), expected_magic.hex()))
         # command 12 bytes
+        command = s.read(12)
         # strip the trailing 0's
+        command = command.rstrip(b'\x00')
         # payload length 4 bytes, little endian
+        payload_length = little_endian_to_int(s.read(4))
         # checksum 4 bytes, first four of hash256 of payload
+        checksum = s.read(4)
         # payload is of length payload_length
+        payload = s.read(payload_length)
         # verify checksum
+        if hash256(payload)[:4] != checksum:
+            raise IOError('Checksum does not match payload!')
         # return an instance of the class
-        raise NotImplementedError
+        return cls(command, payload, testnet)
 
     def serialize(self):
         '''Returns the byte serialization of the entire network message'''
         # add the network magic
+        serialization = self.magic
         # command 12 bytes
         # fill with 0's
+        serialization += self.command + b'\x00'*(12 - len(self.command))
         # payload length 4 bytes, little endian
+        serialization += int_to_little_endian(len(self.payload), 4)
         # checksum 4 bytes, first four of hash256 of payload
+        serialization += hash256(self.payload)[:4]
         # payload
-        raise NotImplementedError
+        serialization += self.payload
+        return serialization
 
     def stream(self):
         '''Returns a stream for parsing the payload'''
@@ -134,19 +146,35 @@ class VersionMessage:
     def serialize(self):
         '''Serialize this message to send over the network'''
         # version is 4 bytes little endian
+        serialization = int_to_little_endian(self.version, 4)
         # services is 8 bytes little endian
+        serialization += int_to_little_endian(self.services, 8)
         # timestamp is 8 bytes little endian
+        serialization += int_to_little_endian(self.timestamp, 8)
         # receiver services is 8 bytes little endian
+        serialization += int_to_little_endian(self.receiver_services, 8)
         # IPV4 is 10 00 bytes and 2 ff bytes then receiver ip
+        serialization += b'\x00' * 10 + b'\xff' * 2 + self.receiver_ip
         # receiver port is 2 bytes, big endian
+        serialization += int.to_bytes(self.receiver_port, 2, 'big')
         # sender services is 8 bytes little endian
+        serialization += int_to_little_endian(self.sender_services, 8)
         # IPV4 is 10 00 bytes and 2 ff bytes then sender ip
+        serialization += b'\x00' * 10 + b'\xff' * 2 + self.sender_ip
         # sender port is 2 bytes, big endian
+        serialization += int.to_bytes(self.sender_port, 2, 'big')
         # nonce should be 8 bytes
+        serialization += self.nonce + b'\x00'*(8 - len(self.nonce))
         # useragent is a variable string, so varint first
+        serialization += encode_varint(len(self.user_agent)) + self.user_agent
         # latest block is 4 bytes little endian
+        serialization += int_to_little_endian(self.latest_block, 4)
         # relay is 00 if false, 01 if true
-        raise NotImplementedError
+        if self.relay:
+            serialization += b'\x01'
+        else:
+            serialization += b'\x00'
+        return serialization
 
 
 class VersionMessageTest(TestCase):
@@ -205,7 +233,7 @@ class PongMessage:
 class GetHeadersMessage:
     command = b'getheaders'
 
-    def __init__(self, version=70015, num_hashes=1, 
+    def __init__(self, version=70015, num_hashes=1,
         start_block=None, end_block=None):
         self.version = version
         self.num_hashes = num_hashes  # <1>
@@ -221,10 +249,14 @@ class GetHeadersMessage:
     def serialize(self):
         '''Serialize this message to send over the network'''
         # protocol version is 4 bytes little-endian
+        serialization = int_to_little_endian(self.version, 4)
         # number of hashes is a varint
+        serialization += encode_varint(self.num_hashes)
         # start block is in little-endian
+        serialization += self.start_block[::-1]
         # end block is also in little-endian
-        raise NotImplementedError
+        serialization += self.end_block[::-1]
+        return serialization
 
 
 class GetHeadersMessageTest(TestCase):
@@ -286,9 +318,12 @@ class SimpleNode:
         '''Do a handshake with the other node.
         Handshake is sending a version message and getting a verack back.'''
         # create a version message
+        version = VersionMessage()
         # send the command
+        self.send(version)
         # wait for a verack message
-        raise NotImplementedError
+        self.wait_for(VerAckMessage)
+        #raise NotImplementedError
     # tag::source4[]
 
     def send(self, message):  # <1>
